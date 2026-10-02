@@ -1,81 +1,32 @@
 'use strict';
-
-const FIGHTERS = [
-  {
-    id: 'jiwoo', name: '지우', type: '인간', hp: 120, attack: 25, defense: 15, speed: 30,
-    description: '피카츄 대신 직접 나가는 소년',
-    moves: [
-      { name: '몸통박치기', power: 35, accuracy: 95, description: '몸으로 부딪쳐 공격한다.' },
-      { name: '울음공격', power: 15, accuracy: 100, effect: 'attackDown', description: '적의 공격을 1단계 낮춘다.' },
-      { name: '학원땡땡이', power: 0, accuracy: 100, effect: 'evasionUp', description: '자신의 회피율을 1단계 높인다.' },
-      { name: '엄마찬스', power: 0, accuracy: 100, effect: 'heal', amount: 40, description: '자신의 HP를 40 회복한다.' }
-    ]
-  },
-  {
-    id: 'nuke', name: '핵탄두', type: '핵', hp: 100, attack: 40, defense: 10, speed: 15,
-    description: '정은이가 발사한 그것',
-    moves: [
-      { name: '미사일발사', power: 45, accuracy: 90, description: '미사일을 발사한다.' },
-      { name: '방사능낙진', power: 20, accuracy: 100, effect: 'radiation', description: '적에게 3턴간 턴당 8 지속 데미지를 준다.' },
-      { name: '자폭', power: 90, accuracy: 100, effect: 'recoilHalf', description: '준 데미지의 50%를 반동으로 받는다.' },
-      { name: '연막작전', power: 0, accuracy: 100, effect: 'evasionUp', description: '자신의 회피율을 1단계 높인다.' }
-    ]
-  },
-  {
-    id: 'chicken', name: '양념치킨', type: '음식', hp: 140, attack: 20, defense: 25, speed: 10,
-    description: '바삭함이 무기다',
-    moves: [
-      { name: '양념범벅', power: 25, accuracy: 100, description: '끈적한 양념으로 공격한다.' },
-      { name: '후라이드러시', power: 40, accuracy: 90, effect: 'recoil', amount: 10, description: '자신도 10 반동 데미지를 받는다.' },
-      { name: '바삭방어', power: 0, accuracy: 100, effect: 'defenseUp', description: '자신의 방어를 1단계 높인다.' },
-      { name: '닭다리흡입', power: 0, accuracy: 100, effect: 'heal', amount: 30, description: '자신의 HP를 30 회복한다.' }
-    ]
-  },
-  {
-    id: 'router', name: '와이파이공유기', type: '전기', hp: 90, attack: 30, defense: 20, speed: 40,
-    description: '연결이 끊기면 모두가 운다',
-    moves: [
-      { name: '5G충격', power: 40, accuracy: 95, description: '빠른 전기 충격으로 공격한다.' },
-      { name: '와이파이끊기', power: 20, accuracy: 100, effect: 'speedDown', description: '적의 스피드를 1단계 낮춘다.' },
-      { name: '전자파교란', power: 25, accuracy: 100, effect: 'accuracyDown', description: '적의 명중률을 1단계 낮춘다.' },
-      { name: '재부팅', power: 0, accuracy: 100, effect: 'heal', amount: 35, description: '자신의 HP를 35 회복한다.' }
-    ]
-  },
-  {
-    id: 'heatingpad', name: '전기장판', type: '전기', hp: 130, attack: 28, defense: 22, speed: 12,
-    description: '겨울엔 이불 밖은 위험해',
-    moves: [
-      { name: '온돌펀치', power: 35, accuracy: 95, description: '따뜻한 열기로 후려친다.' },
-      { name: '이불속숨기', power: 0, accuracy: 100, effect: 'evasionUp', description: '이불 속에 숨어 자신의 회피율을 1단계 높인다.' },
-      { name: '온도조절실패', power: 20, accuracy: 100, effect: 'accuracyDown', description: '적의 명중률을 1단계 낮춘다.' },
-      { name: '과열폭주', power: 50, accuracy: 90, effect: 'recoil', amount: 15, description: '자신도 15 반동 데미지를 받는다.' }
-    ]
-  },
-  {
-    id: 'lotto', name: '로또용지', type: '인간', hp: 110, attack: 30, defense: 12, speed: 35,
-    description: '이번 주 주인공은 나야 나',
-    moves: [
-      { name: '긁어보자', power: 30, accuracy: 100, description: '복권을 긁어 공격한다.' },
-      { name: '1등당첨', power: 60, accuracy: 50, description: '맞으면 대박, 빗나가면 쪽박.' },
-      { name: '꽝', power: 10, accuracy: 100, effect: 'attackDown', description: '적의 공격을 1단계 낮춘다.' },
-      { name: '연금복권', power: 0, accuracy: 100, effect: 'heal', amount: 40, description: '자신의 HP를 40 회복한다.' }
-    ]
-  },
-  {
-    id: 'buldak', name: '불닭볶음면', type: '음식', hp: 120, attack: 32, defense: 18, speed: 22,
-    description: '먹으면 속이 탄다',
-    moves: [
-      { name: '핵불닭소스', power: 45, accuracy: 90, description: '매운 소스로 공격한다.' },
-      { name: '스코빌쇼크', power: 20, accuracy: 100, effect: 'accuracyDown', description: '적의 명중률을 1단계 낮춘다.' },
-      { name: '면치기', power: 30, accuracy: 100, description: '면을 후루룩 빨아들여 후려친다.' },
-      { name: '우유마시기', power: 0, accuracy: 100, effect: 'heal', amount: 35, description: '자신의 HP를 35 회복한다.' }
-    ]
-  }
-];
-
-const TYPE_MATCHUPS = {
-  '인간': { '전기': 1.5, '핵': 0.75 },
-  '전기': { '인간': 0.75, '음식': 1.5 },
-  '음식': { '전기': 0.75, '핵': 1.5 },
-  '핵': { '음식': 0.75, '인간': 1.5 }
+window.TP = {};
+TP.types = {normal:['노말','#b3ad9b'],fire:['불꽃','#e68150'],water:['물','#65a7d8'],grass:['풀','#8fbc69'],electric:['전기','#e5c660'],ice:['얼음','#86ced0'],rock:['바위','#b6a779'],dark:['악','#9787a8'],flying:['비행','#9faed9'],fighting:['격투','#d49080'],psychic:['에스퍼','#d890b7'],steel:['강철','#a1b4be']};
+// Attack type → defender type; unspecified matchups are neutral.
+TP.chart = {normal:{rock:.5,steel:.5},fire:{grass:2,ice:2,steel:2,water:.5,fire:.5,rock:.5},water:{fire:2,rock:2,water:.5,grass:.5},grass:{water:2,rock:2,fire:.5,grass:.5,flying:.5,steel:.5},electric:{water:2,flying:2,electric:.5,grass:.5},ice:{grass:2,flying:2,fire:.5,water:.5,ice:.5,steel:.5},rock:{fire:2,ice:2,flying:2,fighting:.5,steel:.5},dark:{psychic:2,dark:.5,fighting:.5},flying:{grass:2,fighting:2,rock:.5,electric:.5,steel:.5},fighting:{normal:2,rock:2,steel:2,ice:2,dark:2,flying:.5,psychic:.5},psychic:{fighting:2,psychic:.5,steel:.5,dark:0},steel:{rock:2,ice:2,steel:.5,fire:.5,water:.5,electric:.5}};
+TP.effectiveness = (type,types) => types.reduce((v,t)=>v*(TP.chart[type]?.[t] ?? 1),1);
+const move = (name,type,power,pp,extra={}) => ({name,type,power,pp,accuracy:100,category:'physical',...extra});
+TP.moves = {
+ tackle:move('몸통박치기','normal',40,30),quick:move('전광석화','normal',40,20,{priority:1}),ember:move('불꽃세례','fire',45,25,{category:'special',status:'burn',chance:.25}),flame:move('화염방사','fire',80,12,{category:'special',status:'burn',chance:.2}),water:move('물대포','water',45,25,{category:'special'}),surf:move('파도타기','water',80,12,{category:'special'}),leaf:move('잎날가르기','grass',55,20,{crit:.18}),drain:move('기가드레인','grass',70,12,{category:'special',drain:.5}),spark:move('스파크','electric',55,20,{status:'paralysis',chance:.25}),thunder:move('번개','electric',100,8,{accuracy:85,category:'special',status:'paralysis',chance:.3}),ice:move('냉동빔','ice',75,12,{category:'special',status:'slow',chance:.35}),rock:move('암석봉인','rock',60,15,{accuracy:95,status:'slow',chance:1}),bite:move('물기','dark',55,20,{flinch:.2}),wing:move('날개치기','flying',60,20),steel:move('아이언헤드','steel',75,12,{flinch:.25}),psychic:move('염동력','psychic',60,20,{category:'special'}),sleep:move('수면가루','grass',0,10,{accuracy:80,status:'sleep',chance:1}),toxic:move('맹독','dark',0,12,{accuracy:95,status:'poison',chance:1}),recover:move('재생','normal',0,8,{heal:.4}),guard:move('철벽','steel',0,12,{buff:'def',amount:1}),focus:move('기합','fighting',0,15,{buff:'atk',amount:1}),agility:move('고속이동','flying',0,15,{buff:'spe',amount:1}),
+ punch:move('직접 때리기','fighting',60,25),shout:move('우정의 외침','normal',0,12,{buff:'atk',amount:1}),cap:move('모자 던지기','flying',55,20,{priority:1}),will:move('주인공 보정','normal',0,6,{heal:.4}),crumb:move('바삭한 일격','normal',45,30,{crit:.22}),static:move('남은 정전기','electric',55,20,{category:'special',status:'paralysis',chance:.4}),dust:move('부스러기 먼지','dark',0,12,{status:'poison',chance:1}),scatter:move('흩어지기','flying',0,10,{buff:'evasion',amount:1}),boom:move('만화 같은 대폭발','fire',105,8,{category:'special',recoil:.15}),fall:move('쿵! 떨어지기','steel',70,15),flash:move('번쩍번쩍','electric',65,15,{category:'special',status:'paralysis',chance:.3}),charge:move('황당한 충전','psychic',0,8,{buff:'spa',amount:1}),order:move('이동 금지','psychic',55,20,{category:'special',status:'slow',chance:1}),curfew:move('취침 명령','psychic',0,10,{accuracy:85,status:'sleep',chance:1}),decree:move('엄중한 문서','steel',65,20,{category:'special'}),barrier:move('통제선','steel',0,12,{buff:'def',amount:1}),struggle:move('발버둥','normal',45,999,{recoil:.2})
 };
+TP.starters = [
+ {id:'jiwoo',name:'지우',subtitle:'직접 싸우는 주인공',types:['fighting'],stats:{hp:112,atk:31,def:24,spa:18,spd:23,spe:29},trait:'주인공 보정',description:'HP가 낮을수록 공격력 상승. 균형 잡힌 근접 전투.',moves:['punch','cap','shout','will']},
+ {id:'crumb',name:'피카츄가 먹던 과자의 부스러기',subtitle:'작지만 바삭한 존재',types:['normal','electric'],stats:{hp:82,atk:23,def:17,spa:30,spd:24,spe:42},trait:'너무 작음',description:'기본 회피 15%. 정전기와 독으로 조금씩 무너뜨린다.',moves:['crumb','static','dust','scatter']},
+ {id:'nuke',name:'정은이가 날린 핵탄두',subtitle:'만화적 파괴력',types:['fire','steel'],stats:{hp:105,atk:27,def:30,spa:45,spd:20,spe:15},trait:'잔열',description:'특수공격 +15%. 폭발은 강하지만 자신도 피해를 받는다.',moves:['boom','fall','flash','charge']},
+ {id:'martiallaw',name:'계엄령',subtitle:'개념도 싸울 수 있다',types:['psychic','steel'],stats:{hp:128,atk:18,def:34,spa:29,spd:32,spe:19},trait:'통제 구역',description:'받는 피해 12% 감소. 수면과 감속으로 전장을 통제한다.',moves:['order','curfew','decree','barrier']}
+];
+TP.enemies = [
+ {id:'embercub',name:'엠버큐브',types:['fire'],moves:['tackle','ember','focus','flame'],stats:{hp:74,atk:23,def:18,spa:25,spd:18,spe:24}},
+ {id:'aquafin',name:'아쿠아핀',types:['water'],moves:['water','tackle','recover','surf'],stats:{hp:86,atk:20,def:22,spa:27,spd:24,spe:22}},
+ {id:'leafsprout',name:'리프스프라우트',types:['grass'],moves:['leaf','tackle','sleep','drain'],stats:{hp:78,atk:25,def:21,spa:24,spd:22,spe:25}},
+ {id:'pebblor',name:'페블러',types:['rock'],moves:['rock','tackle','guard','steel'],stats:{hp:94,atk:28,def:33,spa:15,spd:18,spe:12}},
+ {id:'voltbeetle',name:'볼트비틀',types:['electric'],moves:['spark','quick','agility','thunder'],stats:{hp:76,atk:26,def:22,spa:30,spd:21,spe:39}},
+ {id:'frostkit',name:'프로스트킷',types:['ice'],moves:['ice','quick','sleep','water'],stats:{hp:79,atk:20,def:19,spa:33,spd:27,spe:34}},
+ {id:'duskbat',name:'더스크배트',types:['dark','flying'],moves:['bite','wing','toxic','drain'],stats:{hp:82,atk:30,def:20,spa:22,spd:22,spe:40}},
+ {id:'galehawk',name:'게일호크',types:['flying'],moves:['wing','quick','agility','steel'],stats:{hp:86,atk:33,def:22,spa:20,spd:23,spe:43}},
+ {id:'boss-infernodrake',name:'인페르노드레이크',types:['fire','flying'],boss:true,moves:['flame','wing','focus','steel'],stats:{hp:155,atk:31,def:26,spa:33,spd:25,spe:29}},
+ {id:'boss-abyssalord',name:'어비설로드',types:['water','dark'],boss:true,moves:['surf','bite','recover','toxic'],stats:{hp:170,atk:29,def:28,spa:35,spd:30,spe:24}}
+];
+TP.rewards = [
+ {id:'atk',name:'단단한 주먹',detail:'공격 +12%',rarity:'일반'}, {id:'spa',name:'이상한 에너지',detail:'특수공격 +12%',rarity:'일반'}, {id:'hp',name:'큰 그릇',detail:'최대 HP +15% · 증가량만큼 회복',rarity:'일반'}, {id:'speed',name:'가벼운 발걸음',detail:'속도 +15%',rarity:'일반'}, {id:'defense',name:'견고한 껍질',detail:'방어 · 특수방어 +12%',rarity:'일반'}, {id:'heal',name:'휴식의 샘',detail:'HP 완전 회복 · 모든 PP 회복',rarity:'일반'}, {id:'crit',name:'정밀한 눈',detail:'치명타 확률 +12%',rarity:'희귀'}, {id:'power',name:'기술 연마',detail:'선택한 기술 위력 +20% · PP 회복',rarity:'일반'}, {id:'move',name:'기술의 기록',detail:'새로운 기술 습득 · 교체할 슬롯 선택',rarity:'희귀'}, {id:'leech',name:'생명의 씨앗',detail:'가한 피해의 10% 회복 (최대 30%)',rarity:'희귀'}, {id:'status',name:'끈질긴 흔적',detail:'상태이상 확률 +20% · 독/화상 피해 증가',rarity:'희귀'}, {id:'type',name:'차원의 조각',detail:'새 타입 추가 · 타입 일치 보너스 획득',rarity:'전설'}, {id:'regen',name:'불굴의 심장',detail:'매 턴 최대 HP의 5% 회복',rarity:'전설'}
+];

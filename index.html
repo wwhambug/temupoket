@@ -1,98 +1,24 @@
 <!doctype html>
 <html lang="ko">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>TEMUPOKET — 이상한 것들의 배틀</title>
-  <link rel="stylesheet" href="css/style.css">
-  <script defer src="js/data.js"></script>
-  <script defer src="js/music.js"></script>
-  <script defer src="js/battle.js"></script>
-  <script defer src="js/main.js"></script>
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#202934"><title>TEMUPOKET — Rebuild</title><link rel="stylesheet" href="css/style.css"></head>
 <body>
-  <main id="game">
-    <button id="music-toggle" type="button">BGM 끄기</button>
-    <section id="title-screen" class="screen title-screen" aria-labelledby="game-title">
-      <div class="title-panel">
-        <h1 id="game-title">TEMUPOKET</h1>
-        <p class="subtitle">이상한 것들의 배틀</p>
-        <div class="title-fighters" aria-hidden="true">
-          <img src="assets/jiwoo-front.png" alt="">
-          <img src="assets/nuke-front.png" alt="">
-          <img src="assets/chicken-front.png" alt="">
-          <img src="assets/router-front.png" alt="">
-          <img src="assets/heatingpad-front.png" alt="">
-          <img src="assets/lotto-front.png" alt="">
-          <img src="assets/buldak-front.png" alt="">
-        </div>
-        <button id="start-button" class="primary">게임 시작</button>
-        <button id="help-button" type="button" aria-haspopup="dialog" aria-controls="help-modal">도움말</button>
-        <p id="battle-record" class="battle-record" role="status">아직 전적이 없습니다</p>
-      </div>
-    </section>
-    <section id="difficulty-screen" class="screen" hidden aria-labelledby="difficulty-title">
-      <h2 id="difficulty-title">난이도 선택</h2>
-      <p class="subtitle">배틀의 난이도를 선택하세요.</p>
-      <div class="difficulty-cards">
-        <button class="difficulty-card" data-difficulty="easy"><strong>쉬움</strong><span>적의 공격이 약해진다</span></button>
-        <button class="difficulty-card" data-difficulty="normal"><strong>보통</strong><span>기본 규칙 그대로</span></button>
-        <button class="difficulty-card" data-difficulty="hard"><strong>어려움</strong><span>적의 공격이 강해지고 영리해진다</span></button>
-      </div>
-      <button id="difficulty-back-button">돌아가기</button>
-    </section>
-    <section id="select-screen" class="screen" hidden aria-labelledby="select-title">
-      <h2 id="select-title" tabindex="-1">파이터 선택</h2>
-      <p class="subtitle">배틀에 나갈 파이터를 선택하세요.</p>
-      <div id="fighter-cards" class="fighter-cards"></div>
-    </section>
-    <section id="battle-screen" class="screen" hidden aria-label="야생 배틀">
-      <div class="battle-field">
-        <div class="battle-difficulty">
-          <span id="battle-difficulty"></span>
-          <span id="battle-streak" hidden></span>
-        </div>
-        <div id="enemy-status" class="status enemy-status">
-          <div class="status-heading"><strong id="enemy-name"></strong><span id="enemy-type"></span></div>
-          <div class="hp-track" role="progressbar" aria-label="상대 체력"><div id="enemy-hp-bar" class="hp-fill"></div></div>
-          <div id="enemy-hp-text" class="hp-text"></div>
-        </div>
-        <img id="enemy-sprite" class="battle-sprite enemy-sprite" alt="">
-        <img id="player-sprite" class="battle-sprite player-sprite" alt="">
-        <div id="player-status" class="status player-status">
-          <div class="status-heading"><strong id="player-name"></strong><span id="player-type"></span></div>
-          <div class="hp-track" role="progressbar" aria-label="내 체력"><div id="player-hp-bar" class="hp-fill"></div></div>
-          <div id="player-hp-text" class="hp-text"></div>
-        </div>
-      </div>
-      <div class="battle-console">
-        <button id="message-box" class="message-box" disabled aria-label="배틀 메시지, 클릭하면 다음 메시지">
-          <span id="message-text" role="status" aria-live="polite"></span>
-          <span id="message-hint" class="message-hint" hidden>클릭하여 계속 ▾</span>
-        </button>
-        <div id="command-menu" class="command-menu" aria-label="배틀 행동"></div>
-      </div>
-    </section>
-  </main>
-  <dialog id="help-modal" aria-labelledby="help-title">
-    <h2 id="help-title">도움말</h2>
-    <dl class="help-content">
-      <dt>조작법</dt>
-      <dd>버튼 클릭으로 진행하고, 메시지는 클릭해서 넘깁니다.</dd>
-      <dt>타입 상성</dt>
-      <dd>인간 → 전기 → 음식 → 핵 → 인간<br>화살표 방향으로 공격하면 효과가 굉장합니다 (데미지 1.5배).</dd>
-      <dt>크리티컬</dt>
-      <dd>1/16 확률로 데미지가 1.5배가 됩니다.</dd>
-      <dt>상처약</dt>
-      <dd>배틀당 3개를 사용할 수 있고, HP를 50 회복합니다.</dd>
-      <dt>도망</dt>
-      <dd>50% 확률로 도망칠 수 있습니다.</dd>
-      <dt>난이도</dt>
-      <dd>쉬움: 적의 공격이 약해집니다.<br>보통: 기본 규칙 그대로 진행합니다.<br>어려움: 적의 공격이 강해지고 영리해집니다.</dd>
-      <dt>연승</dt>
-      <dd>승리 후 연속 도전할 수 있으며, 남은 HP를 이어받습니다.</dd>
-    </dl>
-    <button id="help-close-button" type="button" autofocus>닫기</button>
-  </dialog>
-</body>
-</html>
+<main id="shell">
+ <div id="viewport-wrap"><div id="game" aria-label="TEMUPOKET 게임 화면">
+  <div id="landscape"></div><div id="shade"></div>
+  <header><span class="brand">TEMUPOKET <small>REBUILD</small></span><span id="stage-label">새로운 모험</span><button id="settings-button" aria-label="설정">설정</button></header>
+  <section id="battle" hidden>
+   <div id="enemy-panel" class="hp-panel"><div class="identity"><strong id="enemy-name"></strong><span id="enemy-level"></span></div><div class="hp-row"><b>HP</b><div class="bar"><i id="enemy-bar"></i></div></div><div class="panel-foot"><span id="enemy-types"></span><span id="enemy-hp"></span></div><span id="enemy-status" class="status-tag"></span></div>
+   <div id="enemy-actor" class="actor"><img id="enemy-sprite" alt="敵モンスター"><div class="effects"></div></div>
+   <div id="player-actor" class="actor"><img id="player-sprite" alt="내 캐릭터"><div class="effects"></div></div>
+   <div id="player-panel" class="hp-panel"><div class="identity"><strong id="player-name"></strong><span id="player-level"></span></div><div class="hp-row"><b>HP</b><div class="bar"><i id="player-bar"></i></div></div><div class="panel-foot"><span id="player-types"></span><span id="player-hp"></span></div><div class="exp-bar"><i id="exp-bar"></i></div><span id="player-status" class="status-tag"></span></div>
+   <div id="battle-text" role="status" aria-live="polite"></div>
+   <footer id="command-box"><div id="moves"></div><aside id="move-info"><span class="muted">기술 선택</span><p>방향키 · A / Enter<br>1–4 바로 사용</p></aside></footer>
+  </section>
+  <section id="overlay" class="overlay"></section>
+  <section id="settings" class="overlay" hidden><div class="settings-card"><span class="eyebrow">OPTIONS</span><h2>설정</h2><label>효과음 <input id="sound-setting" type="checkbox"></label><label>빠른 전투 <input id="fast-setting" type="checkbox"></label><label>연출 줄이기 <input id="motion-setting" type="checkbox"></label><p>방향키: 선택 · Enter / A: 실행 · Esc / B: 뒤로<br>전투 중 1–4: 기술 바로 사용</p><button id="close-settings" class="primary">돌아가기</button></div></section>
+ </div></div>
+ <div id="touch-controls" aria-label="터치 컨트롤"><div class="dpad"><button data-dir="up" aria-label="위">▲</button><button data-dir="left" aria-label="왼쪽">◀</button><span></span><button data-dir="right" aria-label="오른쪽">▶</button><button data-dir="down" aria-label="아래">▼</button></div><span class="control-label">TEMUPOKET<br><small>POCKET SYSTEM</small></span><div class="ab"><button id="touch-b" aria-label="뒤로">B</button><button id="touch-a" aria-label="선택">A</button></div></div>
+ <p class="desktop-hint">방향키로 선택 · Enter로 실행 · 1–4 기술 사용 <span>정상적인 세계, 비정상적인 동료.</span></p>
+</main>
+<script src="js/data.js"></script><script src="js/sprite-clips.js"></script><script src="js/battle.js"></script><script src="js/main.js"></script>
+</body></html>

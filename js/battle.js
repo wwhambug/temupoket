@@ -1,421 +1,151 @@
 'use strict';
-
-const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-const BattleRecord = {
-  value: { win: 0, lose: 0, run: 0, maxStreak: 0 },
-  load() {
-    try {
-      const saved = JSON.parse(localStorage.getItem('temupoket-record'));
-      if (saved && ['win', 'lose', 'run'].every(key => Number.isSafeInteger(saved[key]) && saved[key] >= 0)) {
-        this.value = {
-          win: saved.win, lose: saved.lose, run: saved.run,
-          maxStreak: Number.isSafeInteger(saved.maxStreak) && saved.maxStreak >= 0 ? saved.maxStreak : 0
-        };
-      } else {
-        this.save();
-      }
-    } catch (_) { /* Keep an in-memory record when storage is unavailable or invalid. */ }
-  },
-  save() {
-    try {
-      localStorage.setItem('temupoket-record', JSON.stringify(this.value));
-    } catch (_) { /* Storage failures must not interrupt the battle. */ }
-  },
-  add(result) {
-    this.value[result]++;
-    this.save();
-  },
-  endStreak(streak) {
-    this.value.maxStreak = Math.max(this.value.maxStreak, streak);
-    this.save();
+(() => {
+ const clone = x => JSON.parse(JSON.stringify(x));
+ const stageFactor = n => 1 + .085 * (n - 1);
+ const stages = () => ({atk:0,def:0,spa:0,spd:0,spe:0,evasion:0});
+ const makeMoves = ids => ids.map(id => ({id,...clone(TP.moves[id]),left:TP.moves[id].pp,boost:1}));
+ TP.createPlayer = id => {
+  const base=clone(TP.starters.find(s=>s.id===id));
+  return {...base,baseStats:clone(base.stats),hp:base.stats.hp,level:5,xp:0,nextXp:32,status:null,stages:stages(),moves:makeMoves(base.moves),mods:{hp:1,atk:1,def:1,spa:1,spd:1,spe:1},crit:0,leech:0,statusBonus:0,regen:0};
+ };
+ TP.createEnemy = n => {
+  const boss=n%10===0;
+  const pool=TP.enemies.slice(0,n<4?4:n<7?6:8);
+  // Deterministic variety across the route, randomized order within each biome.
+  const base=clone(boss?TP.enemies[8+(Math.floor(n/10)%2===0?1:0)]:pool[(n-1+Math.floor(Math.random()*3))%pool.length]);
+  const f=stageFactor(n);
+  const stats=Object.fromEntries(Object.entries(base.stats).map(([k,v])=>[k,Math.round(v*f*(k==='hp'?1.4:1))]));
+  return {...base,stats,hp:stats.hp,level:4+n,status:null,stages:stages(),moves:makeMoves(base.moves.slice(0,boss?4:n<4?2:n<7?3:4)),trait:boss?'심연의 의지':n>=15?'굳건함':n>=7?'야생의 본능':'야생',enraged:false};
+ };
+ TP.rebuildStats = p => {
+  const growth=1+.085*(p.level-5);
+  p.stats=Object.fromEntries(Object.entries(p.baseStats).map(([k,v])=>[k,Math.round(v*growth*p.mods[k])]));
+ };
+ TP.stat = (c,key) => {
+  let v=c.stats[key];const s=c.stages[key]||0;v*=s>=0?(2+s)/2:2/(2-s);
+  if(key==='spe'&&(c.status?.id==='paralysis'||c.status?.id==='slow'))v*=.55;
+  if(key==='atk'&&c.status?.id==='burn')v*=.65;
+  if(c.id==='jiwoo'&&key==='atk'&&c.hp<c.stats.hp*.4)v*=1.4;
+  if(c.id==='nuke'&&key==='spa')v*=1.15;
+  if(c.enraged&&['atk','spa'].includes(key))v*=1.2;
+  return v;
+ };
+ TP.preview = (attacker,defender,m) => {
+  const eff=TP.effectiveness(m.type,defender.types),special=m.category==='special';
+  const stab=attacker.types.includes(m.type)?1.35:1;
+  return (((2*attacker.level/5+2)*m.power*(m.boost||1)*TP.stat(attacker,special?'spa':'atk')/TP.stat(defender,special?'spd':'def')/35)+3)*eff*stab;
+ };
+ TP.ai = (e,p) => {
+  const usable=e.moves.filter(m=>m.left>0);
+  if(!usable.length)return {id:'struggle',...TP.moves.struggle,left:999,boost:1};
+  const scored=usable.map(m=>{
+   let score=m.power?TP.preview(e,p,m):0;
+   if(m.heal)score=e.hp/e.stats.hp<.45&&m.left>m.pp-2?35:0;
+   if(m.status&&!p.status)score+=m.power?8:18;
+   if(m.buff)score=e.stages[m.buff]<1?16:0;
+   if(m.priority&&TP.stat(e,'spe')<TP.stat(p,'spe'))score+=5;
+   return {m,score:score*(.8+Math.random()*.4)};
+  }).sort((a,b)=>b.score-a.score);
+  return Math.random()<.12?usable[Math.floor(Math.random()*usable.length)]:scored[0].m;
+ };
+ TP.statusNames={burn:'화상',poison:'독',paralysis:'마비',sleep:'수면',slow:'감속'};
+ TP.applyStatus = (target,id) => {
+  if(target.status)return false;
+  if((id==='burn'&&target.types.includes('fire'))||(id==='paralysis'&&target.types.includes('electric'))||(id==='slow'&&target.types.includes('ice')))return false;
+  target.status={id,turns:id==='sleep'?2:4};return true;
+ };
+ TP.act = async (attacker,target,m,isPlayer) => {
+  const ui=TP.ui;
+  if(attacker.hp<=0||target.hp<=0)return;
+  if(attacker.flinched){attacker.flinched=false;ui.say(`${attacker.name}은(는) 움찔했다!`);await ui.pause(450);return;}
+  if(attacker.status?.id==='sleep'){ui.say(`${attacker.name}은(는) 잠들어 있다…`);await ui.pause(450);return;}
+  if(attacker.status?.id==='paralysis'&&Math.random()<.2){ui.say(`${attacker.name}은(는) 마비로 움직일 수 없다!`);await ui.pause(450);return;}
+  m.left=Math.max(0,m.left-1);ui.render();ui.say(`${attacker.name}의 ${m.name}!`);
+  await ui.attackAnimation(isPlayer,m.type);
+  const dodge=target.id==='crumb'?.15:0;
+  const accuracy=m.accuracy/100*(1-dodge)/(1+.14*target.stages.evasion);
+  if(Math.random()>accuracy){ui.float(!isPlayer,'빗나감');ui.say('공격이 빗나갔다!');await ui.pause(400);return;}
+  if(m.heal){const amount=Math.min(attacker.stats.hp-attacker.hp,Math.round(attacker.stats.hp*m.heal));attacker.hp+=amount;ui.float(isPlayer,`+${amount}`);ui.say('체력을 회복했다!');}
+  if(m.buff){attacker.stages[m.buff]=Math.min(4,attacker.stages[m.buff]+m.amount);if(m.buff==='def')attacker.stages.spd=Math.min(4,attacker.stages.spd+1);ui.float(isPlayer,'강화');ui.say(`${m.name} — 능력치가 상승했다!`);}
+  if(m.power){
+   const critical=Math.random()<.06+(attacker.crit||0)+(m.crit||0);
+   const eff=TP.effectiveness(m.type,target.types);
+   let damage=eff===0?0:Math.max(1,Math.round(TP.preview(attacker,target,m)*(.9+Math.random()*.2)*(critical?1.6:1)));
+   if(target.id==='martiallaw')damage=Math.round(damage*.88);
+   if(target.trait==='굳건함')damage=Math.round(damage*.92);
+   damage=Math.min(target.hp,damage);target.hp-=damage;
+   ui.hitAnimation(!isPlayer,m.type,critical);ui.float(!isPlayer,critical?`${damage} CRIT!`:`${damage}`,critical);
+   let detail=critical?'급소에 맞았다! ':'';detail+=eff>1?'효과가 굉장했다!':eff===0?'효과가 없다…':eff<1?'효과가 별로다…':'';
+   if(detail)ui.say(detail);
+   const heal=Math.round(damage*((m.drain||0)+(attacker.leech||0)));
+   if(heal){attacker.hp=Math.min(attacker.stats.hp,attacker.hp+heal);ui.float(isPlayer,`+${heal}`);}
+   if(m.recoil){const recoil=Math.max(1,Math.round(damage*m.recoil));attacker.hp=Math.max(0,attacker.hp-recoil);ui.float(isPlayer,`-${recoil}`);}
+   if(m.flinch&&target.hp>0&&Math.random()<m.flinch)target.flinched=true;
   }
-};
-
-BattleRecord.load();
-
-// Audio is initialized from a user gesture. The game also works without audio support.
-const Sound = {
-  context: null,
-  play(kind) {
-    try {
-      const Audio = window.AudioContext || window.webkitAudioContext;
-      if (!Audio) return;
-      if (!this.context) this.context = new Audio();
-      if (this.context.state === 'suspended') this.context.resume().catch(() => {});
-      const notes = {
-        click: [650], attack: [240, 420], hit: [140, 90], critical: [880, 1047, 1319],
-        heal: [440, 550, 660], victory: [523, 659, 784, 1047]
-      }[kind] || [440];
-      notes.forEach((frequency, index) => {
-        const oscillator = this.context.createOscillator();
-        const gain = this.context.createGain();
-        const start = this.context.currentTime + index * .09;
-        oscillator.type = 'square';
-        oscillator.frequency.value = frequency;
-        gain.gain.setValueAtTime(.035, start);
-        gain.gain.exponentialRampToValueAtTime(.001, start + .085);
-        oscillator.connect(gain);
-        gain.connect(this.context.destination);
-        oscillator.start(start);
-        oscillator.stop(start + .09);
-      });
-    } catch (_) { /* Audio must never prevent a turn from completing. */ }
+  if(m.status&&target.hp>0&&TP.effectiveness(m.type,target.types)>0&&Math.random()<Math.min(1,(m.chance||1)+(attacker.statusBonus||0))&&TP.applyStatus(target,m.status)){ui.say(`${target.name} — ${TP.statusNames[m.status]}!`);}
+  ui.render();await ui.pause(450);
+ };
+ TP.endTurn = async (c,opponent,isPlayer) => {
+  c.flinched=false;
+  if(c.hp<=0)return;
+  if(c.status){
+   const s=c.status;
+   if(s.id==='burn'||s.id==='poison'){
+    const damage=Math.max(1,Math.round(c.stats.hp*(s.id==='poison'?.09:.06)*(1+(opponent.statusBonus||0))));
+    c.hp=Math.max(0,c.hp-damage);TP.ui.float(isPlayer,`-${damage}`);TP.ui.say(`${c.name}은(는) ${TP.statusNames[s.id]} 피해를 받았다.`);TP.ui.render();await TP.ui.pause(250);
+   }
+   s.turns--;if(s.turns<=0){c.status=null;TP.ui.say(`${c.name}의 상태이상이 풀렸다!`);}
   }
-};
-
-class Battle {
-  constructor(fighter, difficulty, onReturn, onContinue, { hp = fighter.hp, streak = 0 } = {}) {
-    this.streak = streak;
-    this.result = null;
-    this.difficulty = difficulty;
-    this.difficultySettings = {
-      easy: { label: '쉬움', damage: .8, defensiveChance: .3 },
-      normal: { label: '보통', damage: 1, defensiveChance: .6 },
-      hard: { label: '어려움', damage: 1.2, defensiveChance: .85 }
-    }[difficulty];
-    const opponents = FIGHTERS.filter(candidate => candidate.id !== fighter.id);
-    this.player = this.createCombatant(fighter);
-    this.player.hp = hp;
-    this.enemy = this.createCombatant(opponents[Math.floor(Math.random() * opponents.length)]);
-    this.potions = 3;
-    this.busy = true;
-    this.ended = false;
-    this.onReturn = onReturn;
-    this.onContinue = onContinue;
-    this.menu = document.getElementById('command-menu');
-    this.messageBox = document.getElementById('message-box');
-    this.messageText = document.getElementById('message-text');
-    this.messageHint = document.getElementById('message-hint');
+  if(c.regen&&c.hp>0)c.hp=Math.min(c.stats.hp,c.hp+Math.round(c.stats.hp*c.regen));
+  if(c.boss&&!c.enraged&&c.hp>0&&c.hp<c.stats.hp*.45){c.enraged=true;c.status=null;TP.ui.say('보스의 의지가 타오른다! 공격 강화 · 상태이상 해제');TP.ui.float(false,'각성! ',true);}
+  TP.ui.render();
+ };
+ TP.turn = async index => {
+  const run=TP.run;if(!run||run.phase!=='battle'||run.busy)return;
+  const p=run.player,e=run.enemy;
+  let m=p.moves[index];
+  if(p.moves.every(x=>x.left===0))m={id:'struggle',...TP.moves.struggle,left:999,boost:1};
+  if(!m||m.left<=0)return;
+  run.busy=true;run.turns++;TP.ui.render();
+  const em=TP.ai(e,p);
+  const pFirst=(m.priority||0)!==(em.priority||0)?(m.priority||0)>(em.priority||0):TP.stat(p,'spe')>=TP.stat(e,'spe');
+  if(pFirst){await TP.act(p,e,m,true);await TP.act(e,p,em,false);}else{await TP.act(e,p,em,false);await TP.act(p,e,m,true);}
+  await TP.endTurn(p,e,true);await TP.endTurn(e,p,false);
+  if(p.hp<=0){await TP.ui.finish(false);return;}
+  if(e.hp<=0){await TP.ui.victory();return;}
+  run.busy=false;TP.ui.render();TP.ui.say('어떤 기술을 사용할까?');
+ };
+ TP.awardXp = () => {
+  const p=TP.run.player;const amount=18+TP.run.stage*5+(TP.run.enemy.boss?25:0);p.xp+=amount;let levels=0;
+  while(p.xp>=p.nextXp){p.xp-=p.nextXp;p.nextXp=Math.round(p.nextXp*1.12);p.level++;levels++;const old=p.stats.hp;TP.rebuildStats(p);p.hp+=p.stats.hp-old;}
+  return {amount,levels};
+ };
+ TP.rollRewards = () => {
+  const boss=TP.run.enemy.boss;const pool=TP.rewards.filter(r=>boss||r.rarity!=='전설'||Math.random()<.12);
+  const chosen=[];
+  while(chosen.length<3){const r=clone(pool[Math.floor(Math.random()*pool.length)]);if(chosen.some(x=>x.id===r.id))continue;
+   if(r.id==='move'){const ids=Object.keys(TP.moves).filter(k=>!TP.run.player.moves.some(m=>m.id===k)&&k!=='struggle');r.move=ids[Math.floor(Math.random()*ids.length)];r.detail=`${TP.moves[r.move].name} 습득 · 슬롯 선택`;}
+   if(r.id==='type'){const types=Object.keys(TP.types).filter(t=>!TP.run.player.types.includes(t));if(!types.length)continue;r.type=types[Math.floor(Math.random()*types.length)];r.detail=`${TP.types[r.type][0]} 타입 추가 · 타입 일치 보너스`;}
+   chosen.push(r);
   }
-
-  createCombatant(fighter) {
-    return {
-      data: fighter, hp: fighter.hp, radiation: 0,
-      stages: { attack: 0, defense: 0, speed: 0, accuracy: 0, evasion: 0 }
-    };
-  }
-
-  async start() {
-    Music.start('battle');
-    document.getElementById('battle-difficulty').textContent = `난이도: ${this.difficultySettings.label}`;
-    const streakLabel = document.getElementById('battle-streak');
-    streakLabel.textContent = this.streak > 0 ? `${this.streak}연승 도전 중` : '';
-    streakLabel.hidden = this.streak === 0;
-    for (const side of ['player', 'enemy']) {
-      const fighter = this[side].data;
-      document.getElementById(`${side}-name`).textContent = fighter.name;
-      document.getElementById(`${side}-type`).textContent = fighter.type;
-      const sprite = this.sprite(this[side]);
-      sprite.src = `assets/${fighter.id}-${side === 'player' ? 'back' : 'front'}.png`;
-      sprite.alt = `${fighter.name} ${side === 'player' ? '뒷모습' : '앞모습'}`;
-      sprite.classList.remove('fainted', 'attack', 'hit', 'heal');
-    }
-    this.updateHP();
-    this.menu.replaceChildren();
-    await this.say(`${this.streak > 0 ? `${this.streak}연승 도전! ` : ''}야생의 ${this.enemy.data.name}이(가) 나타났다!`);
-    this.busy = false;
-    this.showCommands();
-  }
-
-  sprite(combatant) {
-    return document.getElementById(combatant === this.player ? 'player-sprite' : 'enemy-sprite');
-  }
-
-  say(message) {
-    this.messageText.textContent = message;
-    this.messageHint.hidden = false;
-    this.messageBox.disabled = false;
-    this.messageBox.focus({ preventScroll: true });
-    return new Promise(resolve => {
-      this.messageBox.onclick = () => {
-        Sound.play('click');
-        this.messageBox.onclick = null;
-        this.messageBox.disabled = true;
-        this.messageHint.hidden = true;
-        resolve();
-      };
-    });
-  }
-
-  addButton(label, action, options = {}) {
-    const button = document.createElement('button');
-    button.textContent = label;
-    if (options.wide) button.className = 'wide';
-    if (options.description) {
-      const detail = document.createElement('span');
-      detail.className = 'move-details';
-      detail.textContent = options.description;
-      button.append(detail);
-    }
-    button.disabled = !!options.disabled;
-    button.onclick = () => {
-      if (this.busy) return;
-      Sound.play('click');
-      action();
-    };
-    this.menu.append(button);
-    if (this.menu.children.length === 1) button.focus({ preventScroll: true });
-  }
-
-  showCommands() {
-    this.menu.replaceChildren();
-    this.messageText.textContent = `${this.player.data.name}은(는) 무엇을 할까?`;
-    this.addButton('싸운다', () => this.showMoves());
-    this.addButton('가방', () => this.showBag());
-    this.addButton('도망간다', () => this.runTurn({ kind: 'escape' }), { wide: true });
-  }
-
-  showMoves() {
-    this.menu.replaceChildren();
-    for (const move of this.player.data.moves) {
-      this.addButton(move.name, () => this.runTurn({ kind: 'move', move }), {
-        description: `위력 ${move.power} · 명중 ${move.accuracy}% / ${move.description}`
-      });
-    }
-    this.addButton('돌아가기', () => this.showCommands(), { wide: true });
-  }
-
-  showBag() {
-    this.menu.replaceChildren();
-    this.addButton(`상처약 × ${this.potions}`, () => this.runTurn({ kind: 'potion' }), {
-      wide: true, disabled: this.potions === 0, description: 'HP 50 회복'
-    });
-    this.addButton('돌아가기', () => this.showCommands(), { wide: true });
-  }
-
-  updateHP() {
-    for (const side of ['player', 'enemy']) {
-      const fighter = this[side];
-      const percent = fighter.hp / fighter.data.hp * 100;
-      const bar = document.getElementById(`${side}-hp-bar`);
-      bar.style.width = `${percent}%`;
-      bar.style.backgroundColor = percent <= 20 ? '#ce5551' : percent <= 50 ? '#e2b244' : '#56a56a';
-      const track = bar.parentElement;
-      track.setAttribute('aria-valuemin', '0');
-      track.setAttribute('aria-valuemax', String(fighter.data.hp));
-      track.setAttribute('aria-valuenow', String(fighter.hp));
-      document.getElementById(`${side}-hp-text`).textContent = `HP ${fighter.hp} / ${fighter.data.hp}`;
-    }
-  }
-
-  stat(fighter, name) {
-    return fighter.data[name] * (1 + fighter.stages[name] * .15);
-  }
-
-  chooseEnemyMove() {
-    const moves = this.enemy.data.moves;
-    const defensive = moves.filter(move => move.effect === 'heal' || move.effect === 'defenseUp');
-    const choices = this.enemy.hp <= this.enemy.data.hp * .4 && defensive.length
-      && Math.random() < this.difficultySettings.defensiveChance
-      ? defensive : moves;
-    return choices[Math.floor(Math.random() * choices.length)];
-  }
-
-  async animate(fighter, animation, duration) {
-    const sprite = this.sprite(fighter);
-    sprite.classList.add(animation);
-    await wait(duration);
-    sprite.classList.remove(animation);
-  }
-
-  async shakeField() {
-    const field = document.querySelector('.battle-field');
-    if (!field) return;
-    field.classList.add('shake');
-    try {
-      await wait(300);
-    } finally {
-      field.classList.remove('shake');
-    }
-  }
-
-  async changeStage(fighter, stat, amount) {
-    const labels = { attack: '공격', defense: '방어', speed: '스피드', accuracy: '명중률', evasion: '회피율' };
-    const before = fighter.stages[stat];
-    fighter.stages[stat] = Math.max(-3, Math.min(3, before + amount));
-    if (before === fighter.stages[stat]) {
-      await this.say(`${fighter.data.name}의 ${labels[stat]}은(는) 더 이상 ${amount > 0 ? '오르지' : '내려가지'} 않는다!`);
-    } else {
-      await this.say(`${fighter.data.name}의 ${labels[stat]}이(가) 1단계 ${amount > 0 ? '올랐다' : '내려갔다'}!`);
-    }
-  }
-
-  async heal(fighter, amount) {
-    const restored = Math.min(amount, fighter.data.hp - fighter.hp);
-    fighter.hp += restored;
-    this.updateHP();
-    Sound.play('heal');
-    await this.animate(fighter, 'heal', 600);
-    await this.say(`${fighter.data.name}의 HP가 ${restored} 회복되었다!`);
-  }
-
-  async useMove(attacker, defender, move) {
-    await this.say(`${attacker.data.name}의 ${move.name}!`);
-    Sound.play('attack');
-    await this.animate(attacker, 'attack', 350);
-    // Six steps span -3 through +3; every step modifies accuracy/evasion by 15%.
-    const accuracy = move.accuracy * (1 + attacker.stages.accuracy * .15)
-      * (1 - defender.stages.evasion * .15);
-    const roll = Math.floor(Math.random() * 100) + 1;
-    if (roll > accuracy) {
-      await this.say(`${attacker.data.name}의 공격은 빗나갔다!`);
-      return;
-    }
-
-    let dealt = 0;
-    if (move.power > 0) {
-      const multiplier = TYPE_MATCHUPS[attacker.data.type]?.[defender.data.type] || 1;
-      // SPEC.md's damage formula does not include defense.
-      let damage = Math.max(1, Math.round(move.power * this.stat(attacker, 'attack') / 25
-        * (.85 + Math.random() * .15) * multiplier));
-      const critical = Math.random() < 1 / 16;
-      if (critical) damage = Math.round(damage * 1.5);
-      if (attacker === this.enemy) damage = Math.max(1, Math.round(damage * this.difficultySettings.damage));
-      dealt = Math.min(defender.hp, damage);
-      defender.hp -= dealt;
-      this.updateHP();
-      Sound.play(critical ? 'critical' : 'hit');
-      await Promise.all([
-        this.animate(defender, 'hit', 600),
-        dealt > 0 ? this.shakeField() : Promise.resolve()
-      ]);
-      await this.say(`${defender.data.name}에게 ${dealt} 데미지!`);
-      if (critical) await this.say('급소에 맞았다!');
-      if (multiplier === 1.5) await this.say('효과가 굉장했다!');
-      if (multiplier === .75) await this.say('효과가 별로인 듯하다...');
-    }
-
-    switch (move.effect) {
-      case 'attackDown':
-        if (defender.hp > 0) await this.changeStage(defender, 'attack', -1);
-        break;
-      case 'speedDown':
-        if (defender.hp > 0) await this.changeStage(defender, 'speed', -1);
-        break;
-      case 'accuracyDown':
-        if (defender.hp > 0) await this.changeStage(defender, 'accuracy', -1);
-        break;
-      case 'evasionUp': await this.changeStage(attacker, 'evasion', 1); break;
-      case 'defenseUp': await this.changeStage(attacker, 'defense', 1); break;
-      case 'heal': await this.heal(attacker, move.amount); break;
-      case 'radiation':
-        if (defender.hp > 0) {
-          defender.radiation = 3;
-          await this.say(`${defender.data.name}에게 방사능낙진! 3턴간 지속 데미지를 받는다!`);
-        }
-        break;
-      case 'recoilHalf':
-      case 'recoil': {
-        const recoil = move.effect === 'recoilHalf' ? Math.round(dealt * .5) : move.amount;
-        const lost = Math.min(attacker.hp, recoil);
-        attacker.hp -= lost;
-        this.updateHP();
-        Sound.play('hit');
-        await Promise.all([
-          this.animate(attacker, 'hit', 600),
-          lost > 0 ? this.shakeField() : Promise.resolve()
-        ]);
-        await this.say(`${attacker.data.name}도 반동으로 ${lost} 데미지를 받았다!`);
-        break;
-      }
-    }
-  }
-
-  async endOfTurn() {
-    // Apply both combatants' end-of-turn damage before checking the result.
-    const affected = [this.player, this.enemy].filter(fighter => fighter.hp > 0 && fighter.radiation > 0);
-    for (const fighter of affected) {
-      fighter.hp = Math.max(0, fighter.hp - 8);
-      fighter.radiation--;
-    }
-    this.updateHP();
-    for (const fighter of affected) {
-      Sound.play('hit');
-      await Promise.all([this.animate(fighter, 'hit', 600), this.shakeField()]);
-      await this.say(`${fighter.data.name}은(는) 방사능낙진으로 8 데미지를 받았다!`);
-      if (fighter.radiation === 0 && fighter.hp > 0) {
-        await this.say(`${fighter.data.name}의 방사능낙진이 해제되었다!`);
-      }
-    }
-  }
-
-  async checkResult() {
-    if (this.ended) return true;
-    if (this.player.hp > 0 && this.enemy.hp > 0) return false;
-    this.ended = true;
-    this.result = this.player.hp === 0 ? 'lose' : 'win';
-    BattleRecord.add(this.result);
-    if (this.result === 'lose') this.endStreak();
-    for (const fighter of [this.player, this.enemy]) {
-      if (fighter.hp === 0) this.sprite(fighter).classList.add('fainted');
-    }
-    // If recoil or radiation knocks out both fighters, the player loses.
-    if (this.player.hp === 0) {
-      await this.say('눈앞이 캄캄해졌다...');
-    } else {
-      Sound.play('victory');
-      await this.say(`야생의 ${this.enemy.data.name}을(를) 쓰러뜨렸다!`);
-    }
-    this.showReplay();
-    return true;
-  }
-
-  showReplay() {
-    this.menu.replaceChildren();
-    this.busy = false;
-    if (this.result === 'win') {
-      this.addButton('연속 도전', () => this.onContinue(this));
-    }
-    this.addButton('다시 싸우기', this.onReturn, { wide: this.result !== 'win' });
-  }
-
-  endStreak() {
-    BattleRecord.endStreak(this.streak);
-    this.streak = 0;
-  }
-
-  async runTurn(action) {
-    if (this.busy || this.ended) return;
-    if (action.kind === 'potion' && this.potions === 0) return;
-    this.busy = true;
-    this.menu.replaceChildren();
-
-    if (action.kind === 'escape') {
-      if (Math.random() < .5) {
-        this.ended = true;
-        this.result = 'run';
-        BattleRecord.add('run');
-        this.endStreak();
-        await this.say('무사히 도망쳤다!');
-        this.showReplay();
-        return;
-      }
-      await this.say('도망칠 수 없었다!');
-      await this.useMove(this.enemy, this.player, this.chooseEnemyMove());
-      if (await this.checkResult()) return;
-    } else if (action.kind === 'potion') {
-      this.potions--;
-      await this.say('상처약을 사용했다!');
-      await this.heal(this.player, 50);
-      await this.useMove(this.enemy, this.player, this.chooseEnemyMove());
-      if (await this.checkResult()) return;
-    } else {
-      const enemyMove = this.chooseEnemyMove();
-      const playerSpeed = this.stat(this.player, 'speed');
-      const enemySpeed = this.stat(this.enemy, 'speed');
-      const playerFirst = playerSpeed > enemySpeed || (playerSpeed === enemySpeed && Math.random() < .5);
-      const turns = playerFirst
-        ? [[this.player, this.enemy, action.move], [this.enemy, this.player, enemyMove]]
-        : [[this.enemy, this.player, enemyMove], [this.player, this.enemy, action.move]];
-      for (const [attacker, defender, move] of turns) {
-        await this.useMove(attacker, defender, move);
-        if (await this.checkResult()) return;
-      }
-    }
-    await this.endOfTurn();
-    if (await this.checkResult()) return;
-    this.busy = false;
-    this.showCommands();
-  }
-}
+  if(boss&&!chosen.some(r=>r.rarity==='전설'))chosen[2]=clone(TP.rewards.find(r=>r.id==='regen'));
+  return chosen;
+ };
+ TP.applyReward = (r,slot=0) => {
+  const p=TP.run.player,oldHp=p.stats.hp;
+  if(['atk','spa'].includes(r.id))p.mods[r.id]*=1.12;
+  if(r.id==='hp')p.mods.hp*=1.15;
+  if(r.id==='speed')p.mods.spe*=1.15;
+  if(r.id==='defense'){p.mods.def*=1.12;p.mods.spd*=1.12;}
+  TP.rebuildStats(p);if(r.id==='hp')p.hp+=p.stats.hp-oldHp;
+  if(r.id==='heal'){p.hp=p.stats.hp;p.moves.forEach(m=>m.left=m.pp);}
+  if(r.id==='crit')p.crit=Math.min(.6,p.crit+.12);
+  if(r.id==='leech')p.leech=Math.min(.3,p.leech+.1);
+  if(r.id==='status')p.statusBonus=Math.min(.6,p.statusBonus+.2);
+  if(r.id==='regen')p.regen=Math.min(.15,p.regen+.05);
+  if(r.id==='type')p.types.push(r.type);
+  if(r.id==='power'){p.moves[slot].boost*=1.2;p.moves[slot].left=p.moves[slot].pp;}
+  if(r.id==='move')p.moves[slot]=makeMoves([r.move])[0];
+  TP.run.upgrades.push(r.name+(r.id==='move'?` (${TP.moves[r.move].name})`:''));
+ };
+})();
